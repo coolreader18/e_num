@@ -51,12 +51,15 @@ impl Variant {
       match fields.style {
         Style::Tuple => {
           if fields.fields.len() != 1 {
-            panic!("Invalid fields for");
+            panic!(
+              "Error: Tuple variants can only have one field at {}",
+              var.ident
+            );
           }
           VariantStyle::Field(fields.fields.first().unwrap().clone())
         }
         Style::Unit => VariantStyle::Unit,
-        Style::Struct => panic!("ENum can't have a struct variant"),
+        Style::Struct => panic!("ENum can't have a struct variant at {}", var.ident),
       }
     };
     let const_ident = syn::Ident::new(
@@ -91,7 +94,7 @@ fn impl_e_num(ast: &syn::DeriveInput) -> TokenStream {
   let start_at = start_at.0;
   let data = data
     .take_enum()
-    .unwrap_or_else(|| panic!("Can't derive struct for ENum"));
+    .unwrap_or_else(|| panic!("ENum can only be derived for enums"));
   let leading = (round_up(data.len() + start_at) - 1).leading_zeros() as usize;
   let mask_size = 64 - leading;
   let vars = {
@@ -212,7 +215,7 @@ impl FromMeta for AttrNum {
   fn from_value(value: &syn::Lit) -> darling::Result<Self> {
     match value {
       syn::Lit::Int(int) => Ok(AttrNum(int.value() as usize)),
-      _ => panic!("Attribute value must be an integer literal"),
+      _ => Err(darling::Error::custom("Value must be an integer literal")),
     }
   }
 }
