@@ -1,5 +1,4 @@
 extern crate proc_macro;
-#[macro_use]
 extern crate syn;
 #[macro_use]
 extern crate quote;
@@ -44,8 +43,8 @@ struct Variant {
 
 impl Variant {
   pub fn from_var(var: Var) -> Variant {
-    let style = if let Some(AttrNum(disc)) = var.constant {
-      VariantStyle::Constant(parse_quote! { #disc })
+    let style = if let Some(AttrExpr(disc)) = var.constant {
+      VariantStyle::Constant(disc)
     } else {
       let fields = var.fields;
       use darling::ast::Style;
@@ -218,11 +217,23 @@ impl FromMeta for AttrNum {
   }
 }
 
+#[derive(Debug)]
+struct AttrExpr(syn::Expr);
+
+impl FromMeta for AttrExpr {
+  fn from_value(value: &syn::Lit) -> darling::Result<Self> {
+    Ok(AttrExpr(syn::Expr::Lit(syn::ExprLit {
+      attrs: vec![],
+      lit: value.clone(),
+    })))
+  }
+}
+
 #[derive(FromVariant, Debug)]
 #[darling(attributes(e_num), forward_attrs(allow, doc, cfg))]
 struct Var {
   #[darling(default)]
-  constant: Option<AttrNum>,
+  constant: Option<AttrExpr>,
   ident: syn::Ident,
   fields: darling::ast::Fields<syn::Type>,
 }
