@@ -1,4 +1,5 @@
 extern crate proc_macro;
+#[macro_use]
 extern crate syn;
 #[macro_use]
 extern crate quote;
@@ -14,7 +15,7 @@ pub fn e_num_derive(input: TokenStream) -> TokenStream {
 }
 
 #[derive(Debug)]
-enum Variant {
+enum VariantStyle {
   /// A single tuple variant with type T where T: ENum
   /// e.g.
   /// ```ignore
@@ -32,30 +33,42 @@ enum Variant {
   /// ```ignore
   /// A = 1,
   /// ```
-  Disc(syn::Expr),
+  Constant(syn::Expr),
+}
+#[derive(Debug)]
+struct Variant {
+  style: VariantStyle,
+  name: syn::Ident,
+  constant_name: syn::Ident,
 }
 
 impl Variant {
-  pub fn from_var(var: &syn::Variant) -> (syn::Ident, syn::Ident, Variant) {
-    let variant = if let Some((_, disc)) = &var.discriminant {
-      Variant::Disc(disc.clone())
+  pub fn from_var(var: Var) -> Variant {
+    let style = if let Some(AttrNum(disc)) = var.constant {
+      VariantStyle::Constant(parse_quote! { #disc })
     } else {
-      match &var.fields {
-        syn::Fields::Unnamed(data) => {
-          if data.unnamed.len() != 1 {
+      let fields = var.fields;
+      use darling::ast::Style;
+      match fields.style {
+        Style::Tuple => {
+          if fields.fields.len() != 1 {
             panic!("Invalid fields for");
           }
-          Variant::Field(data.unnamed.first().unwrap().value().ty.clone())
+          VariantStyle::Field(fields.fields.first().unwrap().clone())
         }
-        syn::Fields::Unit => Variant::Unit,
-        syn::Fields::Named(_) => panic!("ENum can't have named fields variant"),
+        Style::Unit => VariantStyle::Unit,
+        Style::Struct => panic!("ENum can't have a struct variant"),
       }
     };
     let const_ident = syn::Ident::new(
       &format!("{}_MASK", var.ident.to_string().to_uppercase()),
       syn::export::Span::call_site(),
     );
-    (var.ident.clone(), const_ident, variant)
+    Variant {
+      name: var.ident,
+      constant_name: const_ident,
+      style,
+    }
   }
 }
 
@@ -74,38 +87,34 @@ fn round_up(num_to_round: usize) -> usize {
 
 fn impl_e_num(ast: &syn::DeriveInput) -> TokenStream {
   let name = &ast.ident;
-  let data = match &ast.data {
-    syn::Data::Enum(data) => data,
-    _ => panic!("Can't derive struct for ENum"),
-  };
-  let Attr { start_at, .. } = Attr::from_derive_input(ast)
+  let Attr { start_at, data } = Attr::from_derive_input(ast)
     .unwrap_or_else(|err| panic!("Error while parsing attributes: {}", err));
-  let leading = (round_up(data.variants.len() + start_at) - 1).leading_zeros() as usize;
+  let start_at = start_at.0;
+  let data = data
+    .take_enum()
+    .unwrap_or_else(|| panic!("Can't derive struct for ENum"));
+  let leading = (round_up(data.len() + start_at) - 1).leading_zeros() as usize;
   let mask_size = 64 - leading;
   let vars = {
-    let mut vec = data
-      .variants
-      .iter()
-      .map(Variant::from_var)
-      .collect::<Vec<_>>();
-    vec.sort_by(|(_, _, a), (_, _, b)| {
+    let mut vec = data.into_iter().map(Variant::from_var).collect::<Vec<_>>();
+    vec.sort_by(|var1, var2| {
       use std::cmp::Ordering;
-      match (a, b) {
-        (Variant::Disc(_), Variant::Disc(_)) => Ordering::Equal,
-        (Variant::Disc(_), _) => Ordering::Greater,
-        (_, Variant::Disc(_)) => Ordering::Less,
+      match (&var1.style, &var2.style) {
+        (VariantStyle::Constant(_), VariantStyle::Constant(_)) => Ordering::Equal,
+        (VariantStyle::Constant(_), _) => Ordering::Greater,
+        (_, VariantStyle::Constant(_)) => Ordering::Less,
         _ => Ordering::Equal,
       }
     });
     vec
   };
-  let const_names = vars.iter().map(|(_, name, _)| name);
+  let const_names = vars.iter().map(|var| &var.constant_name);
   let const_vals = vars
     .iter()
     .enumerate()
-    .map(|(i, (_, _, var))| match var {
-      Variant::Disc(expr) => quote! { #expr },
-      Variant::Unit | Variant::Field(_) => {
+    .map(|(i, Variant { style, .. })| match style {
+      VariantStyle::Constant(expr) => quote! { #expr },
+      VariantStyle::Unit | VariantStyle::Field(_) => {
         let num = start_at + i;
         quote! { #num }
       }
@@ -113,26 +122,52 @@ fn impl_e_num(ast: &syn::DeriveInput) -> TokenStream {
   let const_defs = quote! {
     #(const #const_names: usize = #const_vals;)*
   };
-  let checks = vars.iter().map(|(_, const_name, var)| match var {
-    Variant::Disc(_) => quote! { num == #const_name },
-    Variant::Field(_) | Variant::Unit => {
-      quote! { num << #leading >> #leading == #const_name }
-    }
-  });
-  let outputs = vars.iter().map(|(var_name, _, var)| match var {
-    Variant::Disc(_) | Variant::Unit => quote! { Some(#name::#var_name) },
-    Variant::Field(ty) => {
-      quote! { <#ty as ENum>::try_from_num(num >> #mask_size).map(|val| #name::#var_name(val)) }
-    }
-  });
-  let matches = vars.iter().map(|(var_name, _, var)| match var {
-    Variant::Field(_) => quote! { #name::#var_name(val) },
-    Variant::Disc(_) | Variant::Unit => quote! { #name::#var_name },
-  });
-  let converts = vars.iter().map(|(_, const_name, var)| match var {
-    Variant::Field(ty) => quote! { <#ty as ENum>::to_num(val) << #mask_size | #const_name },
-    Variant::Disc(_) | Variant::Unit => quote! { #const_name },
-  });
+  let checks = vars.iter().map(
+    |Variant {
+       constant_name,
+       style,
+       ..
+     }| match style {
+      VariantStyle::Constant(_) => quote! { num == #constant_name },
+      VariantStyle::Field(_) | VariantStyle::Unit => {
+        quote! { num << #leading >> #leading == #constant_name }
+      }
+    },
+  );
+  let outputs = vars.iter().map(
+    |Variant {
+       name: var_name,
+       style,
+       ..
+     }| match style {
+      VariantStyle::Constant(_) | VariantStyle::Unit => quote! { Some(#name::#var_name) },
+      VariantStyle::Field(ty) => {
+        quote! { <#ty as ENum>::try_from_num(num >> #mask_size).map(|val| #name::#var_name(val)) }
+      }
+    },
+  );
+  let matches = vars.iter().map(
+    |Variant {
+       name: var_name,
+       style,
+       ..
+     }| match style {
+      VariantStyle::Field(_) => quote! { #name::#var_name(val) },
+      VariantStyle::Constant(_) | VariantStyle::Unit => quote! { #name::#var_name },
+    },
+  );
+  let converts = vars.iter().map(
+    |Variant {
+       constant_name,
+       style,
+       ..
+     }| match style {
+      VariantStyle::Field(ty) => {
+        quote! { <#ty as ENum>::to_num(val) << #mask_size | #constant_name }
+      }
+      VariantStyle::Constant(_) | VariantStyle::Unit => quote! { #constant_name },
+    },
+  );
   let gen = quote! {
     impl ENum for #name {
       fn try_from_num(num: usize) -> Option<Self> {
@@ -169,10 +204,25 @@ fn impl_e_num(ast: &syn::DeriveInput) -> TokenStream {
   gen.into()
 }
 
-use darling::{FromDeriveInput, FromVariant};
+use darling::{FromDeriveInput, FromMeta, FromVariant};
 
-#[derive(FromVariant)]
+#[derive(Default, Debug)]
+struct AttrNum(usize);
+
+impl FromMeta for AttrNum {
+  fn from_value(value: &syn::Lit) -> darling::Result<Self> {
+    match value {
+      syn::Lit::Int(int) => Ok(AttrNum(int.value() as usize)),
+      _ => panic!("Attribute value must be an integer literal"),
+    }
+  }
+}
+
+#[derive(FromVariant, Debug)]
+#[darling(attributes(e_num), forward_attrs(allow, doc, cfg))]
 struct Var {
+  #[darling(default)]
+  constant: Option<AttrNum>,
   ident: syn::Ident,
   fields: darling::ast::Fields<syn::Type>,
 }
@@ -181,6 +231,6 @@ struct Var {
 #[darling(attributes(e_num), forward_attrs(allow, doc, cfg))]
 struct Attr {
   #[darling(default)]
-  pub start_at: usize,
+  pub start_at: AttrNum,
   pub data: darling::ast::Data<Var, ()>,
 }

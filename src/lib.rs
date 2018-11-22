@@ -10,26 +10,38 @@ pub use e_num_derive::*;
 mod tests {
   use ENum;
   #[derive(ENum)]
-  #[e_num(start_at = "0")]
-  enum B {
+  #[e_num(start_at = 0)]
+  enum Test1 {
     A,
-    C(usize),
-    D,
+    B(usize),
+    C,
   }
   #[test]
   fn basic() {
-    assert!(match B::from_num(0) {
-      B::A => true,
+    assert!(match Test1::from_num(0) {
+      Test1::A => true,
       _ => false,
     });
   }
 
   #[test]
   fn value_from_enum() {
-    assert!(match B::from_num(0b10101) {
-      B::C(v) => v == 0b101,
+    assert!(match Test1::from_num(0b10101) {
+      Test1::B(v) => v == 0b101,
       _ => false,
     });
+  }
+
+  #[derive(ENum)]
+  enum Test2 {
+    #[e_num(constant = 9)]
+    A,
+    B,
+  }
+
+  #[test]
+  fn constant_variant() {
+    assert!(Test2::A.to_num() == 9);
   }
 }
 
