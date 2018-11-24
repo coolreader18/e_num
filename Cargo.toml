@@ -1,9 +1,11 @@
 [package]
 name = "e_num"
 version = "0.1.0"
-authors = ["coolreader18 <33094578+coolreader18@users.noreply.github.com>"]
+authors = ["coolreader18 <github.com/coolreader18>"]
+description = "Serialize enums to numbers"
+license = "MIT"
 
 [dependencies]
-e_num_derive = { path = "derive" }
+e_num_derive = { path = "derive", version = "*" }
 
 [dev-dependencies]
