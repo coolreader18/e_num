@@ -1,3 +1,72 @@
+//! # E-Num(ber)
+//!
+//! Serialize enums into numbers.
+//!
+//! ## Basic Usage
+//!
+//! ```
+//! #[macro_use]
+//! extern crate e_num;
+//!
+//! use e_num::ENum;
+//!
+//! #[derive(ENum)]
+//! enum A {
+//!   B,
+//!   C(u64),
+//! }
+//!
+//! fn main() {
+//!   let b: usize = A::B.to_num();
+//!   println!("b as a number: {:#b}", b);
+//!   let b = A::from_num(b);
+//!   assert!(match b {
+//!     A::B => true,
+//!     _ => false,
+//!   });
+//!   let c = A::C(85).to_num();
+//!   println!("c as a number: {:#b}", c);
+//!   let c = A::from_num(c);
+//!   assert!(match c {
+//!     A::C(inner) => {
+//!       assert_eq!(inner, 85);
+//!       true
+//!     }
+//!     _ => false,
+//!   });
+//! }
+//! ```
+//!
+//! ## `start_at` and constant variants
+//!
+//! ```
+//! #[macro_use]
+//! extern crate e_num;
+//!
+//! use e_num::ENum;
+//!
+//! #[derive(ENum)]
+//! // where the non-constant variants will start counting from
+//! #[e_num(start_at = 9)]
+//! enum A {
+//!   // pulls the specified variant out from the rest of them
+//!   // and matches it against that number. constant variants
+//!   // can't have a field.
+//!   #[e_num(constant = 2)]
+//!   B,
+//!   C,
+//!   D,
+//!   E,
+//! }
+//!
+//! fn main() {
+//!   assert_eq!(A::B.to_num(), 2);
+//!   assert_eq!(A::C.to_num(), 9);
+//!   assert_eq!(A::D.to_num(), 10);
+//!   assert_eq!(A::E.to_num(), 11);
+//! }
+//! ```
+
 #[allow(unused_imports)]
 #[doc(hidden)]
 #[macro_use]
