@@ -2,6 +2,14 @@
 
 > Serialize enums into numbers.
 
+## Warning
+
+This library works with variant fields (e.g. `Variant1(u64)`) by bitshifting the
+number representation of the contained value over enough so that the tagging can
+fit on the right of the number. If you're dealing with very large numbers in the
+fields or have a ton of variants, data on the left side of the value will likely
+be lost.
+
 ## Usage
 
 ```rust
