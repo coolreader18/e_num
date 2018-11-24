@@ -11,6 +11,6 @@ license = "MIT"
 members = [".", "derive"]
 
 [dependencies]
-e_num_derive = { path = "./derive", version = "*" }
+e_num_derive = { path = "./e_num_derive", version = "*" }
 
 [dev-dependencies]
