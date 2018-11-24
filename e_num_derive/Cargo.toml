@@ -2,6 +2,10 @@
 name = "e_num_derive"
 version = "0.1.0"
 authors = ["coolreader18 <33094578+coolreader18@users.noreply.github.com>"]
+description = "Serialize enums to numbers"
+documentation = "https://docs.rs/e_num"
+repository = "https://github.com/coolreader18/e_num/tree/master/e_num_derive"
+license = "MIT"
 
 [lib]
 proc-macro = true

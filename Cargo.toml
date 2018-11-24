@@ -8,9 +8,14 @@ repository = "https://github.com/coolreader18/e_num"
 license = "MIT"
 
 [workspace]
-members = [".", "derive"]
+members = [".", "./e_num_derive"]
 
-[dependencies]
-e_num_derive = { path = "./e_num_derive", version = "*" }
+[features]
+derive = ["e_num_derive"]
+
+[dependencies.e_num_derive]
+path = "./e_num_derive"
+optional = true
+version = "0.1.0"
 
 [dev-dependencies]
