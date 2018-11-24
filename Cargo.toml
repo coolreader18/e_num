@@ -3,9 +3,14 @@ name = "e_num"
 version = "0.1.0"
 authors = ["coolreader18 <github.com/coolreader18>"]
 description = "Serialize enums to numbers"
+documentation = "https://docs.rs/e_num"
+repository = "https://github.com/coolreader18/e_num"
 license = "MIT"
 
+[workspace]
+members = [".", "derive"]
+
 [dependencies]
-e_num_derive = { path = "derive", version = "*" }
+e_num_derive = { path = "./derive", version = "*" }
 
 [dev-dependencies]
